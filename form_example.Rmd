@@ -1,0 +1,141 @@
+---
+title: "Form filling rvest tutorial"
+output:
+  html_document:
+  df_print: paged
+---
+  
+# Introduction
+  
+We need to interact with some web-pages to scrape the data we are interested in. Thus far we have dealt with web pages that are static. In this section we will interact with the jobs website [indeed.ca](indeed.ca) to extract potential jobs we can apply for. When we go to indeed.ca, we are faced with the following page
+
+![](sc8.PNG)
+
+
+<br>
+
+
+```{r, echo=T, warning=F, message=F}
+
+# load libraries
+library(dplyr)
+library(rvest)
+library(ggplot2)
+
+# the url for the session
+
+url <- "https://ca.indeed.com/"
+
+
+# We can simulate a session in a browser
+
+html <- url %>% 
+  html_session()
+
+```
+
+`html_session()` is like opening a browser on that webpage. We can extract potential forms to fill out by using `html_form()`
+
+
+```{r}
+
+# extract the form from the webpage
+
+form_blank <- url %>% 
+  read_html() %>% 
+  html_form()
+
+# What is this object
+class(form_blank) # a list
+
+# What is in the list
+str(form_blank)
+
+# What does it look like when we print it
+print(form_blank)
+
+# What fields are in this form
+print(form_blank[[1]]$fields)
+
+
+
+```
+
+
+We can see that there are two fields to fill out in this form
+
+- `q`: the job we want to query
+- `l`: the location we want to query
+
+We can fill out these fields using the `set_value()` function. Lets look for statistics jobs in Toronto Ontario. 
+
+```{r}
+form_filled = form_blank[[1]] %>%
+  set_values(
+    "q" = "Statistics",
+    "l" = "Toronto, ON") 
+```
+
+
+Once we have filled out the form, we can submit it using `submit_form`. 
+
+
+```{r}
+submitted <- html %>% 
+  session_submit(form_filled)
+
+print(submitted)
+
+```
+
+
+You can see that we have moved to this url: `r submitted$url`. It has actually navigated to a page that looks like this:
+
+![](sc9.PNG)
+
+<br>
+
+
+Now we can proceed as we would before. We can start by extracting the job titles available on this page. In this case we are going to extract the element using xpath. We can pass an xpath search of the form ("//tagname[@attribute = 'value']). A quick look in the chrome developer tab shows us that we are looking for `data-tn-element = "jobTitle"` which is found wihin a `div` tag. The attribute we want from this is the `title` element. 
+
+<br>
+
+![](sc10.PNG)
+
+<br>
+
+```{r}
+job_title <- submitted %>% 
+    html_nodes(".jobTitle") %>% 
+    html_text()
+
+job_title
+```
+  
+Voila, we have extracted all the job titles from this page. If we also want to extract the location, we can simply find the nodes that have the class `.location`. Similarly, we can find the company for the posting in the `.company` nodes
+
+```{r}
+
+job_locations <- submitted %>% 
+  rvest::html_nodes(".companyLocation") %>%
+  rvest::html_text()
+
+job_company <- submitted %>% 
+  rvest::html_nodes(".companyName ") %>%
+  rvest::html_text() %>%
+  stringi::stri_trim_both()
+
+
+
+
+# put everything in a data.frame
+
+jobs_data <- tibble(title = job_title,
+                    company = job_company,
+                    location = job_locations)
+
+DT::datatable(jobs_data, caption = "scrapped jobs",
+               options = list(scrollX = T))
+```
+
+
